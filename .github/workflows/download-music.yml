@@ -1,1 +1,79 @@
+name: Download Music
 
+on:
+  workflow_dispatch:
+    inputs:
+      links:
+        description: |
+          Links, one per line.
+          Example:
+          https://example.com/song1
+          https://example.com/song2
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python3 -m pip install --upgrade yt-dlp
+
+      - name: Create music folder
+        run: mkdir -p music
+
+      - name: Download music
+        env:
+          LINKS: ${{ inputs.links }}
+        run: |
+          set -e
+
+          printf '%s\n' "$LINKS" | while IFS= read -r link; do
+            link="$(echo "$link" | xargs)"
+
+            if [ -z "$link" ]; then
+              continue
+            fi
+
+            echo "Downloading: $link"
+
+            yt-dlp \
+              --extract-audio \
+              --audio-format mp3 \
+              --audio-quality 0 \
+              --embed-thumbnail \
+              --add-metadata \
+              --no-playlist \
+              --windows-filenames \
+              -o "music/%(title)s.%(ext)s" \
+              "$link"
+          done
+
+      - name: List downloaded files
+        run: |
+          echo "Downloaded files:"
+          find music -maxdepth 1 -type f -print
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add music/
+
+          if git diff --cached --quiet; then
+            echo "No new files to commit."
+          else
+            git commit -m "Add downloaded music"
+            git push
+          fi
